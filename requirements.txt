@@ -1,5 +1,5 @@
 flask==2.0.1
-yt-dlp==2024.12.3
+yt-dlp==2023.10.7
 opencv-python==4.8.0.76
 python-ffmpeg==2.0.2
 Pillow==9.5.0
