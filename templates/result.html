@@ -3,73 +3,84 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Video Procesado - {{ title }}</title>
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-    <style>
-        .gradient-bg {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        }
-        .card {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
-        }
-    </style>
+    <title>Video Procesado</title>
+    <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="gradient-bg min-h-screen">
+<body class="bg-gray-100">
     <div class="container mx-auto px-4 py-8">
-        <div class="max-w-4xl mx-auto">
-            <div class="card rounded-lg shadow-lg p-6">
-                <h1 class="text-3xl font-bold mb-6">Video Procesado</h1>
+        <div class="bg-white rounded-lg shadow-lg p-6">
+            <h1 class="text-2xl font-bold mb-4">Video Procesado</h1>
+            
+            <!-- Video Player Container -->
+            <div class="relative w-full" style="padding-top: 56.25%;">
+                <video id="videoPlayer" 
+                       class="absolute top-0 left-0 w-full h-full bg-black" 
+                       controls
+                       preload="auto">
+                    <source src="{{ url_for('serve_video', filename=video_id) }}" type="video/mp4">
+                    Tu navegador no soporta el elemento video.
+                </video>
+            </div>
+
+            <!-- Metadata Section -->
+            <div class="mt-6">
+                <h2 class="text-xl font-semibold mb-2">{{ metadata.get('title', 'Video Procesado') }}</h2>
                 
-                <!-- Video Preview -->
-                <div class="mb-8">
-                    <video id="processed-video" controls class="w-full rounded-lg shadow-lg">
-                        <source src="/processed/{{ video_id }}.mp4" type="video/mp4">
-                        Tu navegador no soporta el elemento video.
-                    </video>
+                {% if metadata.get('description') %}
+                <div class="mb-4">
+                    <h3 class="text-lg font-medium mb-2">Descripción:</h3>
+                    <p class="text-gray-700 whitespace-pre-line">{{ metadata.get('description', '') }}</p>
                 </div>
+                {% endif %}
 
-                <!-- Metadata -->
-                <div class="space-y-6">
-                    <!-- Título -->
-                    <div>
-                        <h2 class="text-xl font-semibold mb-2">Título</h2>
-                        <p class="text-gray-700">{{ title }}</p>
-                    </div>
-
-                    <!-- Descripción -->
-                    <div>
-                        <h2 class="text-xl font-semibold mb-2">Descripción</h2>
-                        <p class="text-gray-700 whitespace-pre-line">{{ description }}</p>
-                    </div>
-
-                    <!-- Tags -->
-                    <div>
-                        <h2 class="text-xl font-semibold mb-2">Tags</h2>
-                        <div class="flex flex-wrap gap-2">
-                            {% for tag in tags %}
-                            <span class="bg-purple-100 text-purple-800 px-3 py-1 rounded-full text-sm">{{ tag }}</span>
-                            {% endfor %}
-                        </div>
+                {% if metadata.get('tags') %}
+                <div class="mb-4">
+                    <h3 class="text-lg font-medium mb-2">Tags:</h3>
+                    <div class="flex flex-wrap gap-2">
+                        {% for tag in metadata.get('tags', []) %}
+                        <span class="bg-blue-100 text-blue-800 px-2 py-1 rounded">{{ tag }}</span>
+                        {% endfor %}
                     </div>
                 </div>
+                {% endif %}
 
-                <!-- Download Button -->
-                <div class="mt-8">
-                    <a href="/download_processed/{{ video_id }}" 
-                       class="block w-full bg-purple-600 text-white text-center px-6 py-3 rounded-lg hover:bg-purple-700 transition">
-                        Descargar Video Procesado
-                    </a>
+                {% if metadata.get('duration') %}
+                <div class="text-gray-600">
+                    Duración: {{ '%0.2f'|format(metadata.get('duration')/60) }} minutos
                 </div>
+                {% endif %}
+            </div>
 
-                <!-- Back Button -->
-                <div class="mt-4">
-                    <a href="/" class="block w-full bg-gray-200 text-gray-700 text-center px-6 py-3 rounded-lg hover:bg-gray-300 transition">
-                        Volver al Inicio
-                    </a>
-                </div>
+            <!-- Download Button -->
+            <div class="mt-6">
+                <a href="{{ url_for('serve_video', filename=video_id) }}" 
+                   class="inline-block bg-blue-500 text-white px-6 py-2 rounded hover:bg-blue-600 transition-colors"
+                   download>
+                    Descargar Video
+                </a>
+                <a href="{{ url_for('index') }}" 
+                   class="inline-block bg-gray-500 text-white px-6 py-2 rounded hover:bg-gray-600 transition-colors ml-4">
+                    Volver al Inicio
+                </a>
             </div>
         </div>
     </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const video = document.getElementById('videoPlayer');
+            
+            // Manejar errores de carga del video
+            video.addEventListener('error', function(e) {
+                console.error('Error loading video:', e);
+                alert('Error al cargar el video. Por favor, intente nuevamente.');
+            });
+
+            // Verificar que el video se cargue correctamente
+            video.addEventListener('loadeddata', function() {
+                console.log('Video loaded successfully');
+            });
+        });
+    </script>
 </body>
 </html>

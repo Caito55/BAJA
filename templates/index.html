@@ -16,16 +16,38 @@
         .video-container {
             position: relative;
             width: 100%;
+            max-width: 800px;
+            margin: 0 auto;
             background: #000;
         }
-        #overlay-preview {
+        .overlay-container {
             position: absolute;
-            pointer-events: none;
-            z-index: 10;
             top: 0;
             left: 0;
-            max-width: 100%;
-            max-height: 100%;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+        #draggable-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            cursor: move;
+            pointer-events: auto;
+            user-select: none;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            transform-origin: top left;
+            touch-action: none;
+            max-width: 30%;
+            max-height: 30%;
+            z-index: 1000;
+        }
+        #video-preview {
+            width: 100%;
+            height: auto;
+            display: block;
         }
         .overlay-controls {
             margin-top: 1rem;
@@ -44,12 +66,15 @@
         .range-input {
             width: 100%;
         }
-        #draggable-overlay {
-            position: absolute;
-            cursor: move;
-            z-index: 10;
-            touch-action: none;
-            user-select: none;
+        #processing-progress {
+            display: none;
+        }
+        #processing-progress.show {
+            display: block;
+        }
+        #processing-progress .progress-bar {
+            width: 0%;
+            transition: width 0.3s ease-in-out;
         }
     </style>
 </head>
@@ -76,46 +101,48 @@
             </div>
 
             <!-- Sección de procesamiento -->
-            <div id="processing-section" class="card rounded-lg shadow-lg p-6 mb-8 hidden">
-                <h2 class="text-2xl font-semibold mb-4">Procesar Video</h2>
+            <div id="processing-section" class="hidden mt-8">
+                <h2 class="text-xl font-bold mb-4">Procesamiento de Video</h2>
                 
-                <!-- Video preview con overlay -->
-                <div class="relative w-full">
-                    <video id="video-preview" controls class="w-full rounded-lg">
+                <!-- Controles de overlay -->
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700">Seleccionar Overlay</label>
+                    <input type="file" id="overlay-input" accept="image/*" class="mt-1 block w-full" onchange="handleOverlayUpload(event)">
+                </div>
+
+                <!-- Vista previa del video -->
+                <div class="video-container relative mb-4">
+                    <video id="video-preview" controls class="w-full">
+                        <source src="" type="video/mp4">
                         Tu navegador no soporta el elemento video.
                     </video>
-                    <div id="overlay-container" class="absolute top-0 left-0 w-full h-full pointer-events-none">
-                        <img id="draggable-overlay" 
-                             class="absolute cursor-move z-10 hidden" 
-                             style="max-width: 50%; max-height: 50%; transform-origin: top left; pointer-events: auto;"
-                             alt="Overlay">
+                    <div class="overlay-container">
+                        <img id="draggable-overlay" class="absolute hidden" src="">
                     </div>
                 </div>
 
-                <!-- Controles del overlay -->
-                <div class="overlay-controls">
-                    <div class="control-group">
-                        <label class="control-label">Subir Overlay</label>
-                        <input type="file" id="overlay-input" accept="image/*" 
-                               class="block w-full text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100">
+                <!-- Controles de escala y opacidad -->
+                <div class="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Escala (%)</label>
+                        <input type="range" id="scale-control" min="10" max="200" value="100" class="w-full">
                     </div>
-                    
-                    <div class="control-group">
-                        <label class="control-label">Escala del Overlay</label>
-                        <input type="range" id="scale-control" min="10" max="200" value="100" class="range-input">
-                        <span id="scale-value">100%</span>
-                    </div>
-                    
-                    <div class="control-group">
-                        <label class="control-label">Opacidad</label>
-                        <input type="range" id="opacity-control" min="0" max="100" value="100" class="range-input">
-                        <span id="opacity-value">100%</span>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Opacidad (%)</label>
+                        <input type="range" id="opacity-control" min="0" max="100" value="100" class="w-full">
                     </div>
                 </div>
 
-                <!-- Process button -->
-                <button onclick="processVideo()" 
-                        class="w-full bg-purple-600 text-white px-6 py-2 rounded hover:bg-purple-700 transition mt-4">
+                <!-- Barra de progreso -->
+                <div id="processing-progress" class="hidden">
+                    <div class="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700 mb-2">
+                        <div id="progress-bar" class="bg-blue-600 h-2.5 rounded-full" style="width: 0%"></div>
+                    </div>
+                    <p id="progress-text" class="text-sm text-gray-600">Preparando...</p>
+                </div>
+
+                <!-- Botón de procesar -->
+                <button onclick="processVideo()" class="mt-4 bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded">
                     Procesar Video
                 </button>
             </div>
@@ -141,128 +168,24 @@
     </div>
 
     <script>
-        let currentVideo = null;
-        let currentMetadata = null;
-        let overlayPosition = { x: 0, y: 0 };
-
-        // Variables globales para el arrastre del overlay
         let isDragging = false;
-        let currentX = 0;
-        let currentY = 0;
-        let initialX = 0;
-        let initialY = 0;
+        let currentX;
+        let currentY;
+        let initialX;
+        let initialY;
         let xOffset = 0;
         let yOffset = 0;
         let currentScale = 1;
         let currentOpacity = 1;
+        let isProcessing = false;
 
-        // Función de inicio de arrastre
-        function dragStart(e) {
-            // Obtener el overlay
-            const overlay = document.getElementById('draggable-overlay');
-            const videoPreview = document.getElementById('video-preview');
-
-            // Prevenir comportamiento predeterminado
-            e.preventDefault();
-
-            // Determinar coordenadas iniciales
-            if (e.type === 'mousedown') {
-                initialX = e.clientX - xOffset;
-                initialY = e.clientY - yOffset;
-            } else {
-                initialX = e.touches[0].clientX - xOffset;
-                initialY = e.touches[0].clientY - yOffset;
-            }
-
-            // Marcar que se está arrastrando
-            isDragging = true;
-
-            // Agregar eventos de arrastre
-            if (e.type === 'mousedown') {
-                document.addEventListener('mousemove', drag);
-                document.addEventListener('mouseup', dragEnd);
-            } else {
-                document.addEventListener('touchmove', drag);
-                document.addEventListener('touchend', dragEnd);
-            }
-        }
-
-        // Función de arrastre
-        function drag(e) {
-            if (!isDragging) return;
-
-            const overlay = document.getElementById('draggable-overlay');
-            const videoPreview = document.getElementById('video-preview');
-
-            // Obtener coordenadas actuales
-            if (e.type === 'mousemove') {
-                currentX = e.clientX - initialX;
-                currentY = e.clientY - initialY;
-            } else {
-                currentX = e.touches[0].clientX - initialX;
-                currentY = e.touches[0].clientY - initialY;
-            }
-
-            // Obtener dimensiones del video
-            const videoRect = videoPreview.getBoundingClientRect();
-
-            // Calcular límites de movimiento
-            xOffset = Math.max(0, Math.min(currentX, videoRect.width - overlay.offsetWidth));
-            yOffset = Math.max(0, Math.min(currentY, videoRect.height - overlay.offsetHeight));
-
-            // Aplicar transformación
-            setTranslate(xOffset, yOffset, overlay);
-        }
-
-        // Función para establecer la transformación
-        function setTranslate(xPos, yPos, el) {
-            el.style.transform = `translate3d(${xPos}px, ${yPos}px, 0) scale(${currentScale})`;
-        }
-
-        
-        function dragEnd(e) {
-        
-            isDragging = false;
-
-            
-            if (e.type === 'mouseup') {
-                document.removeEventListener('mousemove', drag);
-                document.removeEventListener('mouseup', dragEnd);
-            } else {
-                document.removeEventListener('touchmove', drag);
-                document.removeEventListener('touchend', dragEnd);
-            }
-        }
-
-        // Función para actualizar estilo del overlay
-        function updateOverlayStyle() {
-            const overlay = document.getElementById('draggable-overlay');
-            const scaleControl = document.getElementById('scale-control');
-            const opacityControl = document.getElementById('opacity-control');
-            
-            // Actualizar valores
-            currentScale = scaleControl.value / 100;
-            currentOpacity = opacityControl.value / 100;
-            
-            // Actualizar texto de valores
-            document.getElementById('scale-value').textContent = `${scaleControl.value}%`;
-            document.getElementById('opacity-value').textContent = `${opacityControl.value}%`;
-            
-            // Aplicar transformación manteniendo la posición actual
-            overlay.style.transform = `translate3d(${xOffset}px, ${yOffset}px, 0) scale(${currentScale})`;
-            overlay.style.opacity = currentOpacity;
-        }
-
-        // Evento de carga de overlay
-        document.getElementById('overlay-input').addEventListener('change', function(e) {
-            const file = e.target.files[0];
+        // Función para manejar la carga del overlay
+        function handleOverlayUpload(event) {
+            const file = event.target.files[0];
             if (file) {
                 const reader = new FileReader();
                 reader.onload = function(e) {
                     const overlay = document.getElementById('draggable-overlay');
-                    const overlayContainer = document.getElementById('overlay-container');
-                    
-                    // Establecer la imagen
                     overlay.src = e.target.result;
                     overlay.classList.remove('hidden');
                     
@@ -272,34 +195,105 @@
                     currentScale = 1;
                     currentOpacity = 1;
                     
-                    // Aplicar transformación inicial
-                    setTranslate(0, 0, overlay);
-                    
-                    // Restablecer controles
+                    // Actualizar controles
                     document.getElementById('scale-control').value = 100;
                     document.getElementById('opacity-control').value = 100;
                     
-                    updateOverlayStyle();
-                    
-                    // Agregar eventos de arrastre
-                    overlay.addEventListener('mousedown', dragStart);
-                    overlay.addEventListener('touchstart', dragStart);
+                    setTransform(overlay);
                 };
-                
-                reader.onerror = function(error) {
-                    console.error('Error al leer el archivo:', error);
-                    alert('Hubo un problema al cargar el archivo de overlay.');
-                };
-                
                 reader.readAsDataURL(file);
             }
-        });
+        }
 
-        // Agregar eventos a los controles de escala y opacidad
+        // Función para actualizar la transformación del overlay
+        function setTransform(element) {
+            // Usar translate3d para mejor rendimiento
+            element.style.transform = `translate3d(${xOffset}px, ${yOffset}px, 0) scale(${currentScale})`;
+            element.style.opacity = currentOpacity;
+        }
+
+        // Funciones para el arrastre del overlay
+        function dragStart(e) {
+            const overlay = document.getElementById('draggable-overlay');
+            if (e.target !== overlay) return;
+
+            e.preventDefault();
+            const videoContainer = document.querySelector('.video-container');
+            const containerRect = videoContainer.getBoundingClientRect();
+
+            if (e.type === "touchstart") {
+                initialX = e.touches[0].clientX - containerRect.left - xOffset;
+                initialY = e.touches[0].clientY - containerRect.top - yOffset;
+            } else {
+                initialX = e.clientX - containerRect.left - xOffset;
+                initialY = e.clientY - containerRect.top - yOffset;
+            }
+
+            isDragging = true;
+        }
+
+        function dragEnd(e) {
+            isDragging = false;
+        }
+
+        function drag(e) {
+            if (!isDragging) return;
+
+            e.preventDefault();
+            const overlay = document.getElementById('draggable-overlay');
+            const videoContainer = document.querySelector('.video-container');
+            const containerRect = videoContainer.getBoundingClientRect();
+
+            let clientX, clientY;
+            if (e.type === "touchmove") {
+                clientX = e.touches[0].clientX;
+                clientY = e.touches[0].clientY;
+            } else {
+                clientX = e.clientX;
+                clientY = e.clientY;
+            }
+
+            // Calcular la posición relativa al contenedor
+            const relativeX = clientX - containerRect.left - initialX;
+            const relativeY = clientY - containerRect.top - initialY;
+
+            // Calcular límites considerando la escala
+            const overlayRect = overlay.getBoundingClientRect();
+            const scaledWidth = overlayRect.width;
+            const scaledHeight = overlayRect.height;
+            
+            // Limitar el movimiento dentro del contenedor
+            xOffset = Math.min(Math.max(relativeX, 0), containerRect.width - scaledWidth);
+            yOffset = Math.min(Math.max(relativeY, 0), containerRect.height - scaledHeight);
+
+            setTransform(overlay);
+        }
+
+        // Actualizar escala y opacidad
+        function updateOverlayStyle() {
+            const overlay = document.getElementById('draggable-overlay');
+            const scaleValue = document.getElementById('scale-control').value;
+            const opacityValue = document.getElementById('opacity-control').value;
+
+            currentScale = scaleValue / 100;
+            currentOpacity = opacityValue / 100;
+
+            setTransform(overlay);
+        }
+
+        // Event Listeners
+        document.addEventListener("touchstart", dragStart, false);
+        document.addEventListener("touchend", dragEnd, false);
+        document.addEventListener("touchmove", drag, false);
+        document.addEventListener("mousedown", dragStart, false);
+        document.addEventListener("mouseup", dragEnd, false);
+        document.addEventListener("mousemove", drag, false);
+
+        // Event listeners para controles
         document.getElementById('scale-control').addEventListener('input', updateOverlayStyle);
         document.getElementById('opacity-control').addEventListener('input', updateOverlayStyle);
 
-        document.getElementById('download-form').addEventListener('submit', function(e) {
+        document.getElementById('download-form').addEventListener('submit', async function(e) {
             e.preventDefault();
             const urlInput = document.getElementById('youtube-url');
             const url = urlInput.value.trim();
@@ -323,77 +317,8 @@
             const formData = new FormData();
             formData.append('url', url);
 
-            fetch('/download', {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    // Almacenar metadatos para usar después
-                    localStorage.setItem('videoMetadata', JSON.stringify(data.metadata));
-                    localStorage.setItem('videoFilename', data.filename);
-                    
-                    // Mostrar video
-                    const videoPreview = document.getElementById('video-preview');
-                    videoPreview.src = `/video/${data.filename}`;
-                    
-                    // Mostrar sección de procesamiento
-                    document.getElementById('processing-section').classList.remove('hidden');
-                } else {
-                    throw new Error(data.error || 'Error desconocido al descargar');
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                errorDiv.textContent = `Error: ${error.message}`;
-                errorDiv.classList.remove('hidden');
-            })
-            .finally(() => {
-                downloadBtn.disabled = false;
-                downloadBtn.innerHTML = 'Descargar';
-            });
-        });
-
-        async function processVideo() {
-            // Obtener el nombre del video desde localStorage
-            const currentVideo = localStorage.getItem('videoFilename');
-            
-            if (!currentVideo) {
-                alert('Por favor, primero descarga un video.');
-                return;
-            }
-
-            // Obtener el archivo de overlay
-            const overlayInput = document.getElementById('overlay-input');
-            const overlayFile = overlayInput.files[0];
-            
-            if (!overlayFile) {
-                alert('Por favor, selecciona un archivo de overlay.');
-                return;
-            }
-
-            // Obtener valores de posición, escala y opacidad
-            const scale = document.getElementById('scale-control').value;
-            const opacity = document.getElementById('opacity-control').value;
-            
-            // Obtener la posición actual del overlay
-            const overlay = document.getElementById('draggable-overlay');
-            const position = {
-                x: xOffset || 0,
-                y: yOffset || 0
-            };
-
-            // Crear FormData para enviar los datos
-            const formData = new FormData();
-            formData.append('video', currentVideo);
-            formData.append('overlay', overlayFile);
-            formData.append('position', JSON.stringify(position));
-            formData.append('scale', scale);
-            formData.append('opacity', opacity);
-
             try {
-                const response = await fetch('/process', {
+                const response = await fetch('/download', {
                     method: 'POST',
                     body: formData
                 });
@@ -401,14 +326,139 @@
                 const data = await response.json();
 
                 if (data.success) {
-                    // Redirigir a la página de resultados
-                    window.location.href = `/result/${data.video_id}`;
+                    // Guardar nombre del video
+                    localStorage.setItem('videoFilename', data.filename);
+                    currentVideo = data.filename;
+                    currentMetadata = data.metadata;
+
+                    // Actualizar vista previa del video
+                    const videoPreview = document.getElementById('video-preview');
+                    videoPreview.src = `/video/${data.filename}`;
+                    videoPreview.load();
+
+                    // Mostrar mensaje de éxito
+                    alert('Video descargado exitosamente');
+
+                    // Mostrar sección de procesamiento
+                    document.getElementById('processing-section').classList.remove('hidden');
                 } else {
-                    throw new Error(data.error || 'Error desconocido al procesar el video');
+                    throw new Error(data.error || 'Error desconocido al descargar');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                errorDiv.textContent = `Error: ${error.message}`;
+                errorDiv.classList.remove('hidden');
+            } finally {
+                downloadBtn.disabled = false;
+                downloadBtn.innerHTML = 'Descargar';
+            }
+        });
+
+        // Función para procesar video mejorada
+        async function processVideo() {
+            // Verificar video
+            const videoPreview = document.getElementById('video-preview');
+            const videoFilename = localStorage.getItem('videoFilename');
+            
+            console.log('Estado del video:', {
+                filename: videoFilename,
+                src: videoPreview?.src,
+                readyState: videoPreview?.readyState,
+                error: videoPreview?.error
+            });
+
+            if (!videoFilename || !videoPreview?.src) {
+                alert('Por favor, asegúrate de que el video se haya descargado correctamente.');
+                return;
+            }
+
+            // Verificar overlay
+            const overlayInput = document.getElementById('overlay-input');
+            const overlay = document.getElementById('draggable-overlay');
+            
+            if (!overlayInput?.files?.[0] || !overlay || overlay.classList.contains('hidden')) {
+                alert('Por favor, selecciona y posiciona un archivo de overlay.');
+                return;
+            }
+
+            // Prevenir múltiples procesamientos
+            if (isProcessing) {
+                return;
+            }
+
+            // Obtener el botón de procesamiento
+            const processButton = document.querySelector('button[onclick="processVideo()"]');
+            if (!processButton) {
+                console.error('No se encontró el botón de procesamiento');
+                alert('Error interno: No se pudo encontrar el botón de procesamiento');
+                return;
+            }
+
+            // Obtener elementos de progreso
+            const progressContainer = document.getElementById('processing-progress');
+            const progressBar = document.getElementById('progress-bar');
+            const progressText = document.getElementById('progress-text');
+
+            if (!progressContainer || !progressBar || !progressText) {
+                console.error('No se encontraron los elementos de progreso');
+                alert('Error interno: No se pudieron encontrar los elementos de progreso');
+                return;
+            }
+
+            try {
+                isProcessing = true;
+                processButton.disabled = true;
+                processButton.classList.add('opacity-50', 'cursor-not-allowed');
+
+                // Preparar datos
+                const formData = new FormData();
+                formData.append('video', videoFilename);
+                formData.append('overlay', overlayInput.files[0]);
+                formData.append('position', JSON.stringify({ x: xOffset, y: yOffset }));
+                formData.append('scale', document.getElementById('scale-control')?.value || '100');
+                formData.append('opacity', document.getElementById('opacity-control')?.value || '100');
+
+                // Mostrar progreso
+                progressContainer.classList.remove('hidden');
+                progressBar.style.width = '10%';
+                progressText.textContent = 'Iniciando procesamiento...';
+
+                // Procesar video
+                const response = await fetch('/process', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Error en la respuesta del servidor: ${response.status}`);
+                }
+
+                progressBar.style.width = '50%';
+                progressText.textContent = 'Procesando video...';
+
+                const data = await response.json();
+
+                if (data.success) {
+                    progressBar.style.width = '100%';
+                    progressText.textContent = 'Completado';
+                    setTimeout(() => {
+                        window.location.href = `/result/${data.video_id}`;
+                    }, 500);
+                } else {
+                    throw new Error(data.error || 'Error en el procesamiento');
                 }
             } catch (error) {
                 console.error('Error:', error);
                 alert(`Error al procesar el video: ${error.message}`);
+                
+                // Ocultar barra de progreso en caso de error
+                progressContainer.classList.add('hidden');
+            } finally {
+                if (processButton) {
+                    isProcessing = false;
+                    processButton.disabled = false;
+                    processButton.classList.remove('opacity-50', 'cursor-not-allowed');
+                }
             }
         }
 
