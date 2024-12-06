@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Procesado - {{ title }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+        }
+    </style>
+</head>
+<body class="gradient-bg min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <div class="max-w-4xl mx-auto">
+            <div class="card rounded-lg shadow-lg p-6">
+                <h1 class="text-3xl font-bold mb-6">Video Procesado</h1>
+                
+                <!-- Video Preview -->
+                <div class="mb-8">
+                    <video id="processed-video" controls class="w-full rounded-lg shadow-lg">
+                        <source src="/processed/{{ video_id }}.mp4" type="video/mp4">
+                        Tu navegador no soporta el elemento video.
+                    </video>
+                </div>
+
+                <!-- Metadata -->
+                <div class="space-y-6">
+                    <!-- Título -->
+                    <div>
+                        <h2 class="text-xl font-semibold mb-2">Título</h2>
+                        <p class="text-gray-700">{{ title }}</p>
+                    </div>
+
+                    <!-- Descripción -->
+                    <div>
+                        <h2 class="text-xl font-semibold mb-2">Descripción</h2>
+                        <p class="text-gray-700 whitespace-pre-line">{{ description }}</p>
+                    </div>
+
+                    <!-- Tags -->
+                    <div>
+                        <h2 class="text-xl font-semibold mb-2">Tags</h2>
+                        <div class="flex flex-wrap gap-2">
+                            {% for tag in tags %}
+                            <span class="bg-purple-100 text-purple-800 px-3 py-1 rounded-full text-sm">{{ tag }}</span>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Download Button -->
+                <div class="mt-8">
+                    <a href="/download_processed/{{ video_id }}" 
+                       class="block w-full bg-purple-600 text-white text-center px-6 py-3 rounded-lg hover:bg-purple-700 transition">
+                        Descargar Video Procesado
+                    </a>
+                </div>
+
+                <!-- Back Button -->
+                <div class="mt-4">
+                    <a href="/" class="block w-full bg-gray-200 text-gray-700 text-center px-6 py-3 rounded-lg hover:bg-gray-300 transition">
+                        Volver al Inicio
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
