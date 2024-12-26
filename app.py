@@ -354,4 +354,6 @@ def serve_video(filename):
         return f"Error al cargar el video: {str(e)}", 404
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    #app.run(debug=True)
+    port = int(os.environ.get("PORT", 5000))  # Toma el puerto del entorno, con un predeterminado en caso de estar en local.
+    app.run(host="0.0.0.0", port=port, debug=True)
