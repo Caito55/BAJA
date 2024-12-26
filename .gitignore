@@ -3,7 +3,9 @@ venv/
 
 
 # Ignorar archivos procesados
-
+*.mp4
+*.json
+*.webp
 # Archivos y carpetas comunes a ignorar
 *.pyc
 __pycache__/

@@ -5,3 +5,4 @@ python-ffmpeg==2.0.2
 Pillow==9.5.0
 werkzeug==2.0.3
 moviepy==1.0.3
+numpy<2
