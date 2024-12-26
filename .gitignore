@@ -2,10 +2,8 @@
 venv/
 
 # Ignorar archivos subidos por el usuario
-uploads/
 
 # Ignorar archivos procesados
-processed/
 
 # Archivos y carpetas comunes a ignorar
 *.pyc
