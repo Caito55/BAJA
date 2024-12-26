@@ -12,9 +12,9 @@
             <h1 class="text-2xl font-bold mb-4">Video Procesado</h1>
             
             <!-- Video Player Container -->
-            <div class="relative w-full" style="padding-top: 56.25%;">
+            <div class="relative">
                 <video id="videoPlayer" 
-                       class="absolute top-0 left-0 w-full h-full bg-black" 
+                       class="w-full bg-black" 
                        controls
                        preload="auto">
                     <source src="{{ url_for('serve_video', filename=video_id) }}" type="video/mp4">

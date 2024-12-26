@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, send_file, send_from_directory
+from flask import Flask, render_template, request, jsonify, send_file, send_from_directory, url_for
 import yt_dlp
 import os
 import cv2
@@ -15,12 +15,13 @@ from PIL import Image
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads'
+app.config['PROCESSED_FOLDER'] = 'processed'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max-limit
 
 # Crear directorios necesarios al inicio de la aplicación
-os.makedirs('downloads', exist_ok=True)
-os.makedirs('processed', exist_ok=True)
-os.makedirs('uploads', exist_ok=True)
+#os.makedirs('downloads', exist_ok=True)
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+os.makedirs(app.config['PROCESSED_FOLDER'], exist_ok=True)
 
 def sanitize_filename(filename):
     """
@@ -90,61 +91,50 @@ def download_video():
 
         # Configurar opciones de yt-dlp
         ydl_opts = {
-            'format': 'best[ext=mp4]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best',
+            'format': 'bestvideo+bestaudio/best',  # Mejor video + mejor audio, o mejor calidad combinada
             'outtmpl': output_path,
-            'merge_output_format': 'mp4',
-            'quiet': False,  # Activar logs para diagnóstico
-            'no_warnings': False,  # Mostrar advertencias
-            'verbose': True,  # Mostrar información detallada
-            'progress': True,  # Mostrar progreso
-            'extract_flat': False,
-            'force_generic_extractor': False,
-            'ignoreerrors': False,  # No ignorar errores para poder diagnosticarlos
+            'quiet': False,
+            'no_warnings': False,
+            'verbose': True,
+            'progress': True,
             'nocheckcertificate': True,
             'postprocessors': [{
                 'key': 'FFmpegVideoConvertor',
                 'preferedformat': 'mp4',
             }],
-            'logger': app.logger,  # Usar el logger de Flask
+            'writeinfojson': True,  # Guardar metadata en JSON
+            'writethumbnail': True,  # Guardar thumbnail
         }
 
         # Intentar la descarga
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                print("Extrayendo información del video...")
-                info = ydl.extract_info(url, download=False)
+                print("Descargando video...")
+                info = ydl.extract_info(url, download=True)
                 if not info:
                     return jsonify({'success': False, 'error': 'No se pudo obtener información del video'})
 
-                print("Información extraída, iniciando descarga...")
-                ydl.download([url])
-
                 # Encontrar el archivo descargado
-                expected_file = os.path.join(app.config['UPLOAD_FOLDER'], f'{temp_filename}.mp4')
-                print(f"Buscando archivo descargado en: {expected_file}")
+                video_filename = f'{temp_filename}.mp4'
+                downloaded_file = os.path.join(app.config['UPLOAD_FOLDER'], video_filename)
 
-                if not os.path.exists(expected_file):
-                    # Buscar cualquier archivo que coincida con el patrón
-                    possible_files = glob.glob(os.path.join(app.config['UPLOAD_FOLDER'], f'{temp_filename}.*'))
-                    if possible_files:
-                        downloaded_file = possible_files[0]
-                        print(f"Archivo encontrado con extensión diferente: {downloaded_file}")
-                        
-                        # Convertir a MP4 si es necesario
-                        if not downloaded_file.endswith('.mp4'):
-                            new_filename = f"{downloaded_file[:-4]}.mp4"
-                            os.rename(downloaded_file, new_filename)
-                            downloaded_file = new_filename
-                    else:
-                        print("No se encontró ningún archivo descargado")
-                        return jsonify({
-                            'success': False,
-                            'error': 'No se pudo encontrar el archivo descargado'
-                        })
-                else:
-                    downloaded_file = expected_file
+                # Guardar metadata en un archivo JSON
+                metadata = {
+                    'title': info.get('title', ''),
+                    'description': info.get('description', ''),
+                    'duration': info.get('duration', 0),
+                    'view_count': info.get('view_count', 0),
+                    'uploader': info.get('uploader', ''),
+                    'tags': info.get('tags', []),
+                    'thumbnail': info.get('thumbnail', ''),
+                }
+                
+                metadata_path = os.path.join(app.config['UPLOAD_FOLDER'], 'metadata.json')
+                with open(metadata_path, 'w', encoding='utf-8') as f:
+                    json.dump(metadata, f, ensure_ascii=False, indent=4)
 
-                print(f"Descarga completada: {downloaded_file}")
+                print(f"Archivo descargado: {downloaded_file}")
+                print(f"Metadata guardada en: {metadata_path}")
 
                 # Verificar el archivo
                 if os.path.getsize(downloaded_file) == 0:
@@ -156,41 +146,12 @@ def download_video():
 
                 return jsonify({
                     'success': True,
-                    'filename': os.path.basename(downloaded_file),
-                    'metadata': {
-                        'title': info.get('title', ''),
-                        'duration': info.get('duration', 0),
-                        'view_count': info.get('view_count', 0),
-                        'uploader': info.get('uploader', ''),
-                    }
+                    'filename': video_filename,
+                    'metadata': metadata
                 })
 
         except Exception as e:
             print(f"Error durante la descarga: {str(e)}")
-            # Intentar con configuración alternativa
-            alt_opts = {
-                **ydl_opts,
-                'format': 'best',  # Formato más simple
-                'postprocessors': [],  # Sin post-procesamiento
-            }
-            
-            print("Intentando con configuración alternativa...")
-            with yt_dlp.YoutubeDL(alt_opts) as ydl:
-                info = ydl.extract_info(url, download=True)
-                if info:
-                    final_file = os.path.join(app.config['UPLOAD_FOLDER'], f'{temp_filename}.mp4')
-                    if os.path.exists(final_file):
-                        return jsonify({
-                            'success': True,
-                            'filename': os.path.basename(final_file),
-                            'metadata': {
-                                'title': info.get('title', ''),
-                                'duration': info.get('duration', 0),
-                                'view_count': info.get('view_count', 0),
-                                'uploader': info.get('uploader', ''),
-                            }
-                        })
-            
             return jsonify({
                 'success': False,
                 'error': f'Error en la descarga: {str(e)}'
@@ -209,7 +170,22 @@ def index():
 
 @app.route('/download', methods=['POST'])
 def download():
-    return download_video()
+    result = download_video()
+    if isinstance(result, str):
+        return result
+    
+    response_data = json.loads(result.get_data(as_text=True))
+    if response_data['success']:
+        # Agregar la URL del video descargado a la respuesta
+        video_url = url_for('serve_video', 
+                          filename=response_data['filename'],
+                          folder='upload')  # Importante: especificar folder='upload'
+        response_data['video_url'] = video_url
+        
+        app.logger.info(f"Video descargado: {response_data['filename']}")
+        app.logger.info(f"URL del video: {video_url}")
+    
+    return jsonify(response_data)
 
 @app.route('/process', methods=['POST'])
 def process_video():
@@ -219,186 +195,122 @@ def process_video():
         
         video_filename = request.form['video']
         video_path = os.path.join(app.config['UPLOAD_FOLDER'], video_filename)
-        metadata_path = os.path.join(app.config['UPLOAD_FOLDER'], 'metadata.json')
         
-        if not os.path.exists(video_path):
-            app.logger.error(f"Video no encontrado en: {video_path}")
-            return jsonify({'success': False, 'error': 'Video no encontrado'})
-
-        # Cargar metadatos originales
-        try:
-            with open(metadata_path, 'r', encoding='utf-8') as f:
-                original_metadata = json.load(f)
-        except Exception as e:
-            app.logger.error(f"Error cargando metadatos: {str(e)}")
-            original_metadata = {}
-
-        # Obtener overlay
+        # Obtener overlay y configuración
         if 'overlay' not in request.files:
             return jsonify({'success': False, 'error': 'No se subió ningún overlay'})
         
         overlay_file = request.files['overlay']
-        if not overlay_file.filename:
-            return jsonify({'success': False, 'error': 'Archivo de overlay inválido'})
-            
-        overlay_filename = secure_filename(overlay_file.filename)
-        overlay_path = os.path.join(app.config['UPLOAD_FOLDER'], f'overlay_{int(time.time())}_{overlay_filename}')
-        overlay_file.save(overlay_path)
-
-        app.logger.info(f"Procesando video: {video_path}")
-        app.logger.info(f"Con overlay: {overlay_path}")
-
-        # Obtener posición y configuración
-        try:
-            position = json.loads(request.form.get('position', '{}'))
-            scale = float(request.form.get('scale', 100)) / 100
-            opacity = float(request.form.get('opacity', 100)) / 100
-            
-            app.logger.info(f"Posición: {position}")
-            app.logger.info(f"Escala: {scale}")
-            app.logger.info(f"Opacidad: {opacity}")
-        except (ValueError, json.JSONDecodeError) as e:
-            return jsonify({'success': False, 'error': f'Error en los parámetros: {str(e)}'})
-
-        # Crear nombre para el video procesado
-        output_filename = f'processed_{int(time.time())}.mp4'
-        output_path = os.path.join(app.config['UPLOAD_FOLDER'], output_filename)
-
-        # Procesar el video
-        video = None
-        overlay_img = None
-        final_video = None
-        temp_overlay_path = None
         
-        try:
-            # Cargar video
-            video = VideoFileClip(video_path)
-            if not video.size:
-                raise ValueError("No se pudo obtener el tamaño del video")
-
-            # Cargar overlay directamente como ImageClip
-            overlay_img = ImageClip(overlay_path, transparent=True)
+        # Obtener dimensiones del contenedor y del video real
+        container_dims = json.loads(request.form.get('containerDimensions', '{}'))
+        container_width = float(container_dims.get('width', 1))
+        container_height = float(container_dims.get('height', 1))
+        
+        # Obtener posición relativa al contenedor
+        position = json.loads(request.form.get('position', '{}'))
+        relative_x = float(position.get('x', 0)) / container_width
+        relative_y = float(position.get('y', 0)) / container_height
+        
+        # Obtener escala y opacidad
+        scale = float(request.form.get('scale', '100')) / 100
+        opacity = float(request.form.get('opacity', '100')) / 100
+        
+        # Cargar video para obtener dimensiones reales
+        video = VideoFileClip(video_path)
+        video_width, video_height = video.size
+        
+        # Calcular posición real en el video
+        x = relative_x * video_width
+        y = relative_y * video_height
+        
+        # Procesar overlay
+        overlay_path = os.path.join(app.config['UPLOAD_FOLDER'], f'overlay_{int(time.time())}_{secure_filename(overlay_file.filename)}')
+        overlay_file.save(overlay_path)
+        
+        # Usar PIL para el redimensionamiento preciso
+        from PIL import Image
+        
+        # Abrir y procesar overlay
+        with Image.open(overlay_path) as pil_image:
+            # Obtener dimensiones originales del overlay
+            original_width, original_height = pil_image.size
             
-            # Obtener dimensiones originales
-            original_width, original_height = overlay_img.size
+            # Calcular nuevas dimensiones manteniendo la proporción con el video
+            overlay_max_width = video_width * 0.3  # máximo 30% del ancho del video
+            base_scale = overlay_max_width / original_width
+            final_scale = base_scale * scale
             
-            # Calcular nuevo tamaño
-            new_width = int(original_width * scale)
-            new_height = int(original_height * scale)
+            new_width = int(original_width * final_scale)
+            new_height = int(original_height * final_scale)
             
-            # Redimensionar el overlay
-            overlay_img = overlay_img.resize((new_width, new_height))
+            # Redimensionar overlay
+            pil_image = pil_image.resize((new_width, new_height), Image.Resampling.LANCZOS)
             
-            # Obtener posición
-            x = position.get('x', 0)
-            y = position.get('y', 0)
-            
-            # Asegurar que el overlay no se salga del video
-            x = max(0, min(x, video.size[0] - new_width))
-            y = max(0, min(y, video.size[1] - new_height))
-            
-            app.logger.info(f"Video size: {video.size}")
-            app.logger.info(f"Overlay original size: {(original_width, original_height)}")
-            app.logger.info(f"Overlay new size: {(new_width, new_height)}")
-            app.logger.info(f"Position: ({x}, {y})")
-            app.logger.info(f"Scale: {scale}")
-            app.logger.info(f"Opacity: {opacity}")
-            
-            # Configurar overlay con posición y opacidad
-            overlay = (overlay_img
-                      .set_position((x, y))
-                      .set_opacity(opacity)
-                      .set_duration(video.duration))
-
-            # Componer video final manteniendo el tamaño original
-            final_video = CompositeVideoClip([video, overlay])
-            
-            app.logger.info("Guardando video procesado...")
-            
-            # Guardar con los mismos parámetros del video original
-            final_video.write_videofile(
-                output_path,
-                codec='libx264',
-                audio_codec='aac',
-                fps=video.fps,
-                preset='medium',
-                threads=4
-            )
-            
-            app.logger.info("Video guardado exitosamente")
-
-            # Preparar metadatos
-            metadata = {
-                'title': original_metadata.get('title', 'Video procesado'),
-                'description': original_metadata.get('description', ''),
-                'tags': original_metadata.get('tags', []),
-                'duration': video.duration,
-                'uploader': original_metadata.get('uploader', ''),
-                'filename': output_filename,
-                'processed': True,
-                'overlay': {
-                    'position': {'x': x, 'y': y},
-                    'scale': scale,
-                    'opacity': opacity,
-                    'dimensions': {
-                        'width': new_width,
-                        'height': new_height
-                    }
-                }
-            }
-
-            # Guardar metadatos del video procesado
-            processed_metadata_path = os.path.join(app.config['UPLOAD_FOLDER'], f'{output_filename}_metadata.json')
-            with open(processed_metadata_path, 'w', encoding='utf-8') as f:
-                json.dump(metadata, f, ensure_ascii=False, indent=2)
-
-            app.logger.info("Proceso completado exitosamente")
-            return jsonify({
-                'success': True,
-                'video_id': output_filename,
-                'metadata': metadata
-            })
-
-        except Exception as e:
-            app.logger.error(f"Error procesando video: {str(e)}")
-            return jsonify({'success': False, 'error': f'Error al procesar el video: {str(e)}'})
-
-        finally:
-            # Limpiar recursos
-            try:
-                if video:
-                    video.close()
-                if overlay_img:
-                    overlay_img.close()
-                if final_video:
-                    final_video.close()
-                if os.path.exists(overlay_path):
-                    os.remove(overlay_path)
-                if temp_overlay_path and os.path.exists(temp_overlay_path):
-                    os.remove(temp_overlay_path)
-            except Exception as e:
-                app.logger.error(f"Error limpiando recursos: {str(e)}")
-
+            # Guardar overlay procesado
+            processed_overlay_path = os.path.join(app.config['UPLOAD_FOLDER'], f'processed_overlay_{int(time.time())}.png')
+            pil_image.save(processed_overlay_path, 'PNG')
+        
+        # Crear clip de overlay
+        overlay_clip = (ImageClip(processed_overlay_path, transparent=True)
+                       .set_position((x, y))
+                       .set_opacity(opacity)
+                       .set_duration(video.duration))
+        
+        # Logs para debugging
+        app.logger.info(f"Dimensiones del video: {video_width}x{video_height}")
+        app.logger.info(f"Dimensiones originales del overlay: {original_width}x{original_height}")
+        app.logger.info(f"Nuevas dimensiones del overlay: {new_width}x{new_height}")
+        app.logger.info(f"Posición final del overlay: ({x}, {y})")
+        app.logger.info(f"Escala aplicada: {scale}")
+        
+        # Crear video final
+        final_video = CompositeVideoClip([video, overlay_clip])
+        
+        # Guardar video procesado
+        output_filename = f'processed_{int(time.time())}.mp4'
+        output_path = os.path.join(app.config['PROCESSED_FOLDER'], output_filename)
+        
+        final_video.write_videofile(
+            output_path,
+            codec='libx264',
+            audio_codec='aac',
+            fps=video.fps,
+            preset='slow',
+            bitrate='8000k'
+        )
+        
+        # Limpiar recursos
+        video.close()
+        overlay_clip.close()
+        final_video.close()
+        os.remove(overlay_path)
+        os.remove(processed_overlay_path)
+        
+        return jsonify({
+            'success': True,
+            'video_id': output_filename
+        })
+        
     except Exception as e:
-        app.logger.error(f"Error inesperado: {str(e)}")
-        return jsonify({'success': False, 'error': f'Error inesperado: {str(e)}'})
+        app.logger.error(f"Error procesando video: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/result/<video_id>')
 def result(video_id):
-    video_path = os.path.join(app.config['UPLOAD_FOLDER'], video_id)
-    metadata_path = os.path.join(app.config['UPLOAD_FOLDER'], f'{video_id}_metadata.json')
+    video_path = os.path.join(app.config['PROCESSED_FOLDER'], video_id)
+    metadata_path = os.path.join(app.config['PROCESSED_FOLDER'], f'{video_id}_metadata.json')
     
     if not os.path.exists(video_path):
         return "Video no encontrado", 404
 
     try:
-        # Intentar cargar metadatos guardados
+        # Cargar metadatos
         try:
             with open(metadata_path, 'r', encoding='utf-8') as f:
                 metadata = json.load(f)
         except Exception as e:
             app.logger.warning(f"Error cargando metadatos guardados: {str(e)}")
-            # Si no hay metadatos guardados, obtener información básica del video
             video = VideoFileClip(video_path)
             metadata = {
                 'title': 'Video procesado',
@@ -410,19 +322,36 @@ def result(video_id):
             }
             video.close()
         
-        return render_template('result.html', video_id=video_id, metadata=metadata)
+        # Agregar el video_id y output_filename a los datos enviados al template
+        return render_template('result.html', 
+                            video_id=video_id, 
+                            output_filename=video_id,  # Agregar esta línea
+                            metadata=metadata)
     except Exception as e:
         app.logger.error(f"Error obteniendo metadatos del video: {str(e)}")
         return "Error al cargar el video", 500
 
 @app.route('/video/<path:filename>')
 def serve_video(filename):
-    """Servir archivos de video desde el directorio de uploads"""
+    """Servir archivos de video desde el directorio especificado"""
     try:
-        return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+        folder = request.args.get('folder', 'processed')  # Por defecto sirve desde processed
+        
+        if folder == 'upload':
+            directory = app.config['UPLOAD_FOLDER']
+        else:
+            directory = app.config['PROCESSED_FOLDER']
+            
+        app.logger.info(f"Sirviendo video desde {directory}: {filename}")
+        
+        if not os.path.exists(os.path.join(directory, filename)):
+            app.logger.error(f"Archivo no encontrado: {filename} en {directory}")
+            return "Archivo no encontrado", 404
+            
+        return send_from_directory(directory, filename)
     except Exception as e:
         app.logger.error(f"Error serving video: {str(e)}")
-        return "Error al cargar el video", 404
+        return f"Error al cargar el video: {str(e)}", 404
 
 if __name__ == '__main__':
     app.run(debug=True)

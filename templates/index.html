@@ -112,7 +112,7 @@
 
                 <!-- Vista previa del video -->
                 <div class="video-container relative mb-4">
-                    <video id="video-preview" controls class="w-full">
+                    <video id="video-preview" controls>
                         <source src="" type="video/mp4">
                         Tu navegador no soporta el elemento video.
                     </video>
@@ -163,6 +163,17 @@
                         class="w-full bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700 transition">
                     Descargar Video Procesado
                 </button>
+            </div>
+
+            <!-- Después del formulario de descarga, agregar: -->
+            <div id="videoPreview" class="mt-4 hidden">
+                <h2 class="text-xl font-bold mb-2">Video Descargado:</h2>
+                <video id="downloadedVideo" 
+                       class="w-full bg-black" 
+                       controls>
+                    <source src="" type="video/mp4">
+                    Tu navegador no soporta el elemento video.
+                </video>
             </div>
         </div>
     </div>
@@ -300,24 +311,20 @@
             const downloadBtn = document.querySelector('button[type="submit"]');
             const errorDiv = document.getElementById('error-message');
 
-            // Validar URL
             if (!url) {
                 errorDiv.textContent = 'Por favor, ingresa una URL de YouTube';
                 errorDiv.classList.remove('hidden');
                 return;
             }
 
-            // Limpiar mensajes de error previos
-            errorDiv.textContent = '';
             errorDiv.classList.add('hidden');
             downloadBtn.disabled = true;
             downloadBtn.innerHTML = 'Descargando...';
 
-            // Crear FormData manualmente para asegurar el envío correcto
-            const formData = new FormData();
-            formData.append('url', url);
-
             try {
+                const formData = new FormData();
+                formData.append('url', url);
+
                 const response = await fetch('/download', {
                     method: 'POST',
                     body: formData
@@ -329,15 +336,15 @@
                     // Guardar nombre del video
                     localStorage.setItem('videoFilename', data.filename);
                     currentVideo = data.filename;
-                    currentMetadata = data.metadata;
 
                     // Actualizar vista previa del video
                     const videoPreview = document.getElementById('video-preview');
-                    videoPreview.src = `/video/${data.filename}`;
+                    videoPreview.src = data.video_url; // Usar la URL devuelta por el servidor
                     videoPreview.load();
 
-                    // Mostrar mensaje de éxito
-                    alert('Video descargado exitosamente');
+                    // Mostrar el video descargado
+                    document.getElementById('videoPreview').classList.remove('hidden');
+                    document.getElementById('downloadedVideo').src = data.video_url;
 
                     // Mostrar sección de procesamiento
                     document.getElementById('processing-section').classList.remove('hidden');
@@ -410,13 +417,19 @@
                 processButton.disabled = true;
                 processButton.classList.add('opacity-50', 'cursor-not-allowed');
 
-                // Preparar datos
+                const videoContainer = document.querySelector('.video-container');
+                const containerDimensions = {
+                    width: videoContainer.offsetWidth,
+                    height: videoContainer.offsetHeight
+                };
+                
                 const formData = new FormData();
                 formData.append('video', videoFilename);
                 formData.append('overlay', overlayInput.files[0]);
                 formData.append('position', JSON.stringify({ x: xOffset, y: yOffset }));
-                formData.append('scale', document.getElementById('scale-control')?.value || '100');
-                formData.append('opacity', document.getElementById('opacity-control')?.value || '100');
+                formData.append('containerDimensions', JSON.stringify(containerDimensions));
+                formData.append('scale', document.getElementById('scale-control').value);
+                formData.append('opacity', document.getElementById('opacity-control').value);
 
                 // Mostrar progreso
                 progressContainer.classList.remove('hidden');
@@ -481,6 +494,25 @@
                 overlay.addEventListener('touchstart', dragStart);
             }
         });
+
+        // Actualizar el script para mostrar el video:
+        function handleDownloadSuccess(response) {
+            if (response.success) {
+                // Mostrar el video descargado
+                const videoPreview = document.getElementById('videoPreview');
+                const downloadedVideo = document.getElementById('downloadedVideo');
+                downloadedVideo.src = `/video/${response.filename}?folder=upload`;
+                videoPreview.classList.remove('hidden');
+                
+                // Guardar el nombre del video para procesamiento
+                currentVideo = response.filename;
+                
+                // Mostrar controles de overlay
+                document.getElementById('overlayControls').classList.remove('hidden');
+            } else {
+                alert('Error: ' + response.error);
+            }
+        }
     </script>
 </body>
 </html>
