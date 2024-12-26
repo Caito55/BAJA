@@ -1,7 +1,6 @@
 # Ignorar entornos virtuales
 venv/
 
-# Ignorar archivos subidos por el usuario
 
 # Ignorar archivos procesados
 
