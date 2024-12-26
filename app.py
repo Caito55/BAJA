@@ -287,6 +287,35 @@ def process_video():
         os.remove(overlay_path)
         os.remove(processed_overlay_path)
         
+        # Después de procesar el video exitosamente y antes de la limpieza
+        try:
+            # Buscar y mover el archivo .info.json
+            json_files = glob.glob(os.path.join(app.config['UPLOAD_FOLDER'], '*.info.json'))
+            for json_source in json_files:
+                try:
+                    json_dest = os.path.join(app.config['PROCESSED_FOLDER'], f"{output_filename}_metadata.json")
+                    shutil.move(json_source, json_dest)
+                    app.logger.info(f"Archivo JSON movido a: {json_dest}")
+                except Exception as e:
+                    app.logger.error(f"Error moviendo archivo JSON {json_source}: {e}")
+            
+            # Limpiar la carpeta uploads
+            for filename in os.listdir(app.config['UPLOAD_FOLDER']):
+                file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                try:
+                    if os.path.isfile(file_path):
+                        os.unlink(file_path)
+                    elif os.path.isdir(file_path):
+                        shutil.rmtree(file_path)
+                    app.logger.info(f"Eliminado archivo: {file_path}")
+                except Exception as e:
+                    app.logger.error(f"Error eliminando {file_path}: {e}")
+            
+            app.logger.info("Carpeta uploads limpiada exitosamente")
+        except Exception as e:
+            app.logger.error(f"Error en la limpieza/movimiento de archivos: {e}")
+            # No lanzamos el error para no afectar el proceso principal
+        
         return jsonify({
             'success': True,
             'video_id': output_filename
@@ -352,6 +381,20 @@ def serve_video(filename):
     except Exception as e:
         app.logger.error(f"Error serving video: {str(e)}")
         return f"Error al cargar el video: {str(e)}", 404
+
+@app.route('/cleanup/<video_id>', methods=['POST'])
+def cleanup_video(video_id):
+    """Eliminar el video procesado después de un tiempo"""
+    try:
+        video_path = os.path.join(app.config['PROCESSED_FOLDER'], video_id)
+        if os.path.exists(video_path):
+            os.remove(video_path)
+            app.logger.info(f"Video eliminado automáticamente: {video_id}")
+            return jsonify({'success': True})
+        return jsonify({'success': False, 'error': 'Video no encontrado'})
+    except Exception as e:
+        app.logger.error(f"Error eliminando video: {e}")
+        return jsonify({'success': False, 'error': str(e)})
 
 if __name__ == '__main__':
     #app.run(debug=True)

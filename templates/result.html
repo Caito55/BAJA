@@ -79,6 +79,21 @@
             // Verificar que el video se cargue correctamente
             video.addEventListener('loadeddata', function() {
                 console.log('Video loaded successfully');
+                
+                // Iniciar temporizador de limpieza después de 2 minutos
+                setTimeout(async function() {
+                    try {
+                        const response = await fetch(`/cleanup/{{ video_id }}`, {
+                            method: 'POST'
+                        });
+                        const data = await response.json();
+                        if (data.success) {
+                            console.log('Video eliminado automáticamente');
+                        }
+                    } catch (error) {
+                        console.error('Error en limpieza automática:', error);
+                    }
+                }, 120000); // 2 minutos = 120000 ms
             });
         });
     </script>
